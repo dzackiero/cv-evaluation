@@ -24,5 +24,5 @@ export class EvaluateCandidateDto {
   })
   @IsString()
   @IsNotEmpty()
-  projectFileId: string;
+  reportFileId: string;
 }

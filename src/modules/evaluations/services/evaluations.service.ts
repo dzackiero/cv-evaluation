@@ -1,43 +1,153 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { EvaluationDocumentService } from './evaluation-document.service';
-import { SystemDocsService } from './system-docs.service';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EvaluationDocumentsService } from './evaluation-documents.service';
+import { SystemDocumentsService } from './system-documents.service';
 import { generateText, generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import {
-  EvaluationResult,
-  OverallEvaluationResult,
+  EvalResult,
   generateEvaluationSchema,
 } from '../schemas/evaluation.schema';
 import { generateCvEvaluationPrompt } from '../prompts/cv-evaluation.prompt';
 import { generateProjectEvaluationPrompt } from '../prompts/project-evaluation.prompt';
 import { generateOverallSummaryPrompt } from '../prompts/overall-evaluation.prompt';
+import { EvaluateCandidateDto } from '../dto/request/evaluate-candidate.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { JobStatus } from 'generated/prisma';
+import { FlowProducer } from 'bullmq';
+import { InjectFlowProducer } from '@nestjs/bullmq';
 
 @Injectable()
 export class EvaluationsService {
   private logger = new Logger(EvaluationsService.name);
 
   constructor(
-    private readonly documentService: EvaluationDocumentService,
-    private readonly systemDocsService: SystemDocsService,
+    @InjectFlowProducer('evaluation-flow')
+    private readonly flowProducer: FlowProducer,
+    private readonly prismaService: PrismaService,
+    private readonly documentService: EvaluationDocumentsService,
+    private readonly systemDocumentsService: SystemDocumentsService,
   ) {}
 
-  async evaluateCv(
+  async initializeJob(userId: string, request: EvaluateCandidateDto) {
+    this.logger.log('Initializing evaluation job');
+    const job = await this.prismaService.job.create({
+      data: {
+        userId,
+        cvFileId: request.cvFileId,
+        reportFileId: request.reportFileId,
+        jobTitle: request.jobTitle,
+        status: JobStatus.QUEUED,
+      },
+    });
+
+    await this.prismaService.evaluationResult.create({
+      data: {
+        jobId: job.id,
+        currentStage: 'queued',
+      },
+    });
+
+    await this.flowProducer.add({
+      name: 'overall-scoring',
+      queueName: 'overall-scoring',
+      data: {
+        jobId: job.id,
+      },
+      children: [
+        {
+          name: 'cv-evaluation',
+          queueName: 'cv-evaluation',
+          data: {
+            userId,
+            jobId: job.id,
+            cvFileId: request.cvFileId,
+            jobTitle: request.jobTitle,
+          },
+        },
+        {
+          name: 'project-evaluation',
+          queueName: 'project-evaluation',
+          data: {
+            jobId: job.id,
+            userId,
+            projectFileId: request.reportFileId,
+            jobTitle: request.jobTitle,
+          },
+        },
+      ],
+    });
+
+    return job;
+  }
+
+  async getJobStatus(jobId: string) {
+    const job = await this.prismaService.job.findUnique({
+      where: { id: jobId },
+      include: { result: true },
+    });
+
+    if (!job) {
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
+    }
+
+    return {
+      id: job.id,
+      status: job.status,
+      result:
+        job.status === JobStatus.COMPLETED &&
+        job.result?.cvMatchRate &&
+        job.result?.projectScore
+          ? {
+              cv_match_rate: job.result.cvMatchRate,
+              cv_feedback: job.result.cvFeedback || '',
+              project_score: job.result.projectScore,
+              project_feedback: job.result.projectFeedback || '',
+              overall_summary: job.result.overallSummary || '',
+            }
+          : undefined,
+      error: job.result?.error ?? undefined,
+    };
+  }
+
+  async evaluate(
+    type: 'cv' | 'project',
     userId: string,
     fileId: string,
     jobTitle: string,
-  ): Promise<EvaluationResult> {
+    jobId?: string,
+  ) {
+    if (type === 'cv') {
+      return this.evaluateCv(userId, fileId, jobTitle, jobId);
+    } else {
+      return this.evaluateProject(userId, fileId, jobTitle, jobId);
+    }
+  }
+
+  async evaluateCv(
+    userId: string,
+    cvFileId: string,
+    jobTitle: string,
+    jobId?: string,
+  ): Promise<EvalResult> {
     this.logger.log(`Starting CV evaluation for job: ${jobTitle}`);
+
+    if (jobId) {
+      await this.prismaService.evaluationResult.update({
+        where: { jobId },
+        data: { currentStage: 'cv_processing' },
+      });
+    }
+
     const cvContent = await this.documentService.loadFileContent(
-      fileId,
+      cvFileId,
       userId,
     );
 
-    this.logger.debug('Loading CV rubric from RAG');
-    const rubric = await this.systemDocsService.getCvRubric();
-    this.logger.log(`Rubric loaded with ${rubric.criteria.length} criteria`);
+    const rubric = await this.systemDocumentsService.getCvRubric();
+    this.logger.debug(`Rubric loaded with ${rubric.criteria.length} criteria`);
 
     const jobDescription =
-      await this.systemDocsService.getJobDescription(jobTitle);
+      await this.systemDocumentsService.getJobDescription(jobTitle);
 
     this.logger.debug('Generating evaluation schema from rubric');
     const schema = generateEvaluationSchema(rubric);
@@ -66,7 +176,7 @@ export class EvaluationsService {
     this.logger.debug('LLM evaluation complete, processing results');
     let weightedSum = 0;
     let totalWeight = 0;
-    const enrichedCriteria: EvaluationResult['criteria'] = {};
+    const enrichedCriteria: EvalResult['criteria'] = {};
 
     rubric.criteria.forEach((criterion) => {
       const criterionResult = evaluationResult.criteria[criterion.name];
@@ -87,6 +197,20 @@ export class EvaluationsService {
     const weighted_score =
       totalWeight > 0 ? Math.round(weightedSum * 100) / 100 : 0;
 
+    const cv_match_rate = Math.round((weighted_score / 100) * 100) / 100;
+
+    if (jobId) {
+      await this.prismaService.evaluationResult.update({
+        where: { jobId },
+        data: {
+          cvMatchRate: cv_match_rate,
+          cvFeedback: evaluationResult.feedback,
+          cvCriteria: enrichedCriteria,
+          currentStage: 'cv_completed',
+        },
+      });
+    }
+
     this.logger.log(
       `CV evaluation complete - weighted score: ${weighted_score}%`,
     );
@@ -100,23 +224,30 @@ export class EvaluationsService {
 
   async evaluateProject(
     userId: string,
-    fileId: string,
+    projectFileId: string,
     jobTitle: string,
-  ): Promise<EvaluationResult> {
+    jobId?: string,
+  ): Promise<EvalResult> {
     this.logger.log('Starting project evaluation');
 
+    if (jobId) {
+      await this.prismaService.evaluationResult.update({
+        where: { jobId },
+        data: { currentStage: 'project_processing' },
+      });
+    }
+
     const projectContent = await this.documentService.loadFileContent(
-      fileId,
+      projectFileId,
       userId,
     );
-    this.logger.debug('Project content loaded');
 
-    const rubric = await this.systemDocsService.getProjectRubric();
-    this.logger.log(
+    const rubric = await this.systemDocumentsService.getProjectRubric();
+    this.logger.debug(
       `Project rubric loaded with ${rubric.criteria.length} criteria`,
     );
 
-    const caseStudy = await this.systemDocsService.getCaseStudy(jobTitle);
+    const caseStudy = await this.systemDocumentsService.getCaseStudy(jobTitle);
     this.logger.debug('Case study brief loaded');
 
     this.logger.debug('Generating evaluation schema from rubric');
@@ -147,7 +278,7 @@ export class EvaluationsService {
     // Calculate weighted score
     let weightedSum = 0;
     let totalWeight = 0;
-    const enrichedCriteria: EvaluationResult['criteria'] = {};
+    const enrichedCriteria: EvalResult['criteria'] = {};
 
     rubric.criteria.forEach((criterion) => {
       const criterionResult = evaluationResult.criteria[criterion.name];
@@ -168,6 +299,21 @@ export class EvaluationsService {
     const weighted_score =
       totalWeight > 0 ? Math.round(weightedSum * 100) / 100 : 0;
 
+    const project_score =
+      Math.round(((weighted_score / 100) * 4 + 1) * 10) / 10;
+
+    if (jobId) {
+      await this.prismaService.evaluationResult.update({
+        where: { jobId },
+        data: {
+          projectScore: project_score,
+          projectFeedback: evaluationResult.feedback,
+          projectCriteria: enrichedCriteria,
+          currentStage: 'project_completed',
+        },
+      });
+    }
+
     this.logger.log(
       `Project evaluation complete - weighted score: ${weighted_score}%`,
     );
@@ -179,33 +325,28 @@ export class EvaluationsService {
     };
   }
 
-  async evaluateCandidate(
-    userId: string,
-    cvFileId: string,
-    projectFileId: string,
-    jobTitle: string,
-  ): Promise<OverallEvaluationResult> {
-    this.logger.log(
-      `Starting complete candidate evaluation for job: ${jobTitle}`,
-    );
+  async evaluateCandidate(jobId: string): Promise<void> {
+    this.logger.log(`Starting overall scoring for job: ${jobId}`);
 
-    // Run CV and project evaluations in parallel
-    const [cvResult, projectResult] = await Promise.all([
-      this.evaluateCv(userId, cvFileId, jobTitle),
-      this.evaluateProject(userId, projectFileId, jobTitle),
-    ]);
+    await this.prismaService.evaluationResult.update({
+      where: { jobId },
+      data: { currentStage: 'overall_processing' },
+    });
 
-    const cv_match_rate =
-      Math.round((cvResult.weighted_score / 100) * 100) / 100;
-    const project_score =
-      Math.round(((projectResult.weighted_score / 100) * 4 + 1) * 10) / 10;
+    const result = await this.prismaService.evaluationResult.findUnique({
+      where: { jobId },
+    });
+
+    if (!result || !result.cvMatchRate || !result.projectScore) {
+      throw new Error('CV or Project evaluation not completed');
+    }
 
     this.logger.debug('Generating overall candidate summary');
     const prompt = generateOverallSummaryPrompt(
-      cv_match_rate,
-      cvResult.feedback,
-      project_score,
-      projectResult.feedback,
+      result.cvMatchRate,
+      result.cvFeedback || 'no feedback provided',
+      result.projectScore,
+      result.projectFeedback || 'no feedback provided',
     );
 
     const summaryResult = await generateText({
@@ -216,16 +357,23 @@ export class EvaluationsService {
 
     const overall_summary = summaryResult.text;
 
-    this.logger.log(
-      `Complete evaluation finished - CV: ${cv_match_rate}, Project: ${project_score}`,
-    );
+    await this.prismaService.$transaction([
+      this.prismaService.evaluationResult.update({
+        where: { jobId },
+        data: {
+          overallSummary: overall_summary,
+          currentStage: 'completed',
+          completedAt: new Date(),
+        },
+      }),
+      this.prismaService.job.update({
+        where: { id: jobId },
+        data: { status: JobStatus.COMPLETED },
+      }),
+    ]);
 
-    return {
-      cv_match_rate,
-      cv_feedback: cvResult.feedback,
-      project_score,
-      project_feedback: projectResult.feedback,
-      overall_summary,
-    };
+    this.logger.log(
+      `Complete evaluation finished - CV: ${result.cvMatchRate}, Project: ${result.projectScore}`,
+    );
   }
 }

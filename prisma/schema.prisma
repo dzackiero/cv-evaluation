@@ -37,8 +37,8 @@ model File {
 }
 
 enum FileType {
-  CV
-  PROJECT_REPORT
+  CV @map("cv")
+  PROJECT_REPORT @map("project_report")
 }
 
 model Job {
@@ -46,6 +46,7 @@ model Job {
   userId       String    @map("user_id")
   cvFileId     String    @map("cv_file_id")
   reportFileId String    @map("report_file_id")
+  jobTitle     String    @map("job_title")
   status       JobStatus @default(QUEUED) @map("status")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -60,10 +61,10 @@ model Job {
 }
 
 enum JobStatus {
-  QUEUED
-  PROCESSING
-  FAILED
-  COMPLETED
+  QUEUED @map("queued")
+  PROCESSING @map("processing")
+  FAILED @map("failed")
+  COMPLETED @map("completed")
 }
 
 model EvaluationResult {

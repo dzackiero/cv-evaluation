@@ -18,8 +18,8 @@ import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 
 @Injectable()
-export class SystemDocsService {
-  private readonly logger = new Logger(SystemDocsService.name);
+export class SystemDocumentsService {
+  private readonly logger = new Logger(SystemDocumentsService.name);
   private readonly ragieApiKey: string;
   private readonly ragieApiUrl = 'https://api.ragie.ai';
 

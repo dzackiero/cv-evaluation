@@ -12,8 +12,8 @@ import { FileUploadItemDto } from '../dto/response/file-upload-response.dto';
 import { PDFParse } from 'pdf-parse';
 
 @Injectable()
-export class EvaluationDocumentService {
-  private readonly logger = new Logger(EvaluationDocumentService.name);
+export class EvaluationDocumentsService {
+  private readonly logger = new Logger(EvaluationDocumentsService.name);
 
   constructor(
     private readonly storageService: StorageService,

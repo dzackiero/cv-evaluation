@@ -16,7 +16,7 @@ import {
   ApiResponse,
   ApiSecurity,
 } from '@nestjs/swagger';
-import { SystemDocsService } from '../services/system-docs.service';
+import { SystemDocumentsService } from '../services/system-documents.service';
 import { SystemDocUploadResponseDto } from '../dto/response/system-doc-upload-response.dto';
 import { UploadSystemDocDto } from '../dto/request/upload-system-doc.dto';
 import { ApiKeyGuard } from '../../../auth/guards/api-key.guard';
@@ -25,8 +25,8 @@ import { ApiKeyGuard } from '../../../auth/guards/api-key.guard';
 @Controller('system-docs')
 @ApiSecurity('api-key')
 @UseGuards(ApiKeyGuard)
-export class SystemDocsController {
-  constructor(private readonly systemDocsService: SystemDocsService) {}
+export class SystemDocumentsController {
+  constructor(private readonly systemDocsService: SystemDocumentsService) {}
 
   @Post()
   @ApiOperation({
@@ -47,7 +47,7 @@ export class SystemDocsController {
         },
         type: {
           type: 'string',
-          enum: ['job_description', 'case_study', 'rubric', ''],
+          enum: ['job_description', 'case_study', 'rubric'],
           description: 'Type of the system document',
         },
         version: {

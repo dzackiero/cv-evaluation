@@ -1,6 +1,8 @@
 import {
   Controller,
   Post,
+  Get,
+  Param,
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
@@ -20,13 +22,9 @@ import { EvaluationsService } from '../services/evaluations.service';
 import { UploadResponseDto } from '../dto/response/file-upload-response.dto';
 import { CurrentUser } from '../../../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
-import {
-  EvaluationJobResponseDto,
-  EvaluationStatus,
-} from '../dto/response/evaluation-job-response.dto';
+import { EvaluationJobResponseDto } from '../dto/response/evaluation-job-response.dto';
 import { EvaluateCandidateDto } from '../dto/request/evaluate-candidate.dto';
-import { EvaluationDocumentService } from '../services/evaluation-document.service';
-import { SingleEvaluateDto } from '../dto/request/single-evaluate.dto';
+import { EvaluationDocumentsService } from '../services/evaluation-documents.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -35,7 +33,7 @@ import { SingleEvaluateDto } from '../dto/request/single-evaluate.dto';
 export class EvaluationsController {
   constructor(
     private readonly evaluationsService: EvaluationsService,
-    private readonly evaluationDocumentService: EvaluationDocumentService,
+    private readonly evaluationDocumentService: EvaluationDocumentsService,
   ) {}
 
   @Post('upload')
@@ -114,17 +112,18 @@ export class EvaluationsController {
     description: 'Evaluation job queued successfully',
     type: EvaluationJobResponseDto,
   })
-  evaluateCandidate(
+  async evaluateCandidate(
     @CurrentUser('id') userId: string,
     @Body() request: EvaluateCandidateDto,
-  ): EvaluationJobResponseDto {
+  ): Promise<EvaluationJobResponseDto> {
+    const job = await this.evaluationsService.initializeJob(userId, request);
     return {
-      id: userId,
-      status: EvaluationStatus.QUEUED,
+      id: job.id,
+      status: job.status,
     };
   }
 
-  @Post('result/:id')
+  @Get('result/:id')
   @ApiOperation({
     summary: 'Get Evaluation Result',
     description:
@@ -136,63 +135,8 @@ export class EvaluationsController {
     type: EvaluationJobResponseDto,
   })
   getEvaluationResult(
-    @CurrentUser('id') userId: string,
-  ): EvaluationJobResponseDto {
-    return {
-      id: userId,
-      status: EvaluationStatus.COMPLETED,
-      result: {
-        cv_match_rate: 0.85,
-        cv_feedback: 'Strong skills demonstrated in backend development.',
-        project_score: 0.9,
-        project_feedback: 'Excellent project report with clear documentation.',
-        overall_summary: 'Candidate shows strong skills in both areas.',
-      },
-    };
-  }
-}
-
-@UseGuards(JwtAuthGuard)
-@Controller()
-@ApiBearerAuth()
-@ApiTags('test')
-export class TestController {
-  constructor(private readonly evaluationsService: EvaluationsService) {}
-
-  @Post('cv')
-  evaluateCv(
-    @CurrentUser('id') userId: string,
-    @Body() request: SingleEvaluateDto,
-  ) {
-    return this.evaluationsService.evaluateCv(
-      userId,
-      request.fileId,
-      request.jobTitle,
-    );
-  }
-
-  @Post('project')
-  evaluateProject(
-    @CurrentUser('id') userId: string,
-    @Body() request: SingleEvaluateDto,
-  ) {
-    return this.evaluationsService.evaluateProject(
-      userId,
-      request.fileId,
-      request.jobTitle,
-    );
-  }
-
-  @Post('overall')
-  evaluateOverall(
-    @CurrentUser('id') userId: string,
-    @Body() request: EvaluateCandidateDto,
-  ) {
-    return this.evaluationsService.evaluateCandidate(
-      userId,
-      request.cvFileId,
-      request.projectFileId,
-      request.jobTitle,
-    );
+    @Param('id') jobId: string,
+  ): Promise<EvaluationJobResponseDto> {
+    return this.evaluationsService.getJobStatus(jobId);
   }
 }

@@ -1,11 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-
-export enum EvaluationStatus {
-  QUEUED = 'queued',
-  PROCESSING = 'processing',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-}
+import { JobStatus } from 'generated/prisma';
 
 export class EvaluationReportDto {
   @ApiProperty({ example: 0.82 })
@@ -41,10 +35,17 @@ export class EvaluationJobResponseDto {
 
   @ApiProperty({
     description: 'Current status of the evaluation job',
-    enum: EvaluationStatus,
-    example: EvaluationStatus.QUEUED,
+    enum: JobStatus,
+    example: JobStatus.QUEUED,
   })
-  status: EvaluationStatus;
+  status: JobStatus;
+
+  @ApiProperty({
+    description: 'Current processing stage',
+    example: 'cv_processing',
+    required: false,
+  })
+  currentStage?: string;
 
   @ApiProperty({
     description: 'Detailed evaluation report once the job is completed',
@@ -52,4 +53,10 @@ export class EvaluationJobResponseDto {
     required: false,
   })
   result?: EvaluationReportDto;
+
+  @ApiProperty({
+    description: 'Error message if job failed',
+    required: false,
+  })
+  error?: string;
 }

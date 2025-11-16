@@ -1,8 +1,8 @@
 -- CreateEnum
-CREATE TYPE "FileType" AS ENUM ('CV', 'PROJECT_REPORT');
+CREATE TYPE "FileType" AS ENUM ('cv', 'project_report');
 
 -- CreateEnum
-CREATE TYPE "JobStatus" AS ENUM ('QUEUED', 'PROCESSING', 'FAILED', 'COMPLETED');
+CREATE TYPE "JobStatus" AS ENUM ('queued', 'processing', 'failed', 'completed');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -33,7 +33,8 @@ CREATE TABLE "jobs" (
     "user_id" TEXT NOT NULL,
     "cv_file_id" TEXT NOT NULL,
     "report_file_id" TEXT NOT NULL,
-    "status" "JobStatus" NOT NULL DEFAULT 'QUEUED',
+    "job_title" TEXT NOT NULL,
+    "status" "JobStatus" NOT NULL DEFAULT 'queued',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 

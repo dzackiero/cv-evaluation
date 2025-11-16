@@ -30,7 +30,7 @@ export function generateEvaluationSchema(rubric: Rubric): z.ZodType {
   });
 }
 
-export interface EvaluationResult {
+export interface EvalResult {
   criteria: Record<
     string,
     {
