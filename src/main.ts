@@ -23,6 +23,7 @@ async function bootstrap() {
     .setTitle('CV Evaluation API')
     .setVersion('1.0')
     .addBearerAuth()
+    .addApiKey({ type: 'apiKey', name: 'x-api-key' })
     .build();
   const documentFactory = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, documentFactory);

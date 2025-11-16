@@ -1,8 +1,8 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { StorageService } from '../storage/storage.service';
-import { $Enums } from '../../../generated/prisma';
-import { FileUploadItemDto } from './dto/response/file-upload-response.dto';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { StorageService } from '../../storage/storage.service';
+import { $Enums } from '../../../../generated/prisma';
+import { FileUploadItemDto } from '../dto/response/file-upload-response.dto';
 
 @Injectable()
 export class EvaluationsService {

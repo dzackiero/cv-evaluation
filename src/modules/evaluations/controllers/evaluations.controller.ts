@@ -15,15 +15,15 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { EvaluationsService } from './services/evaluations.service';
-import { UploadResponseDto } from './dto/response/file-upload-response.dto';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { EvaluationsService } from '../services/evaluations.service';
+import { UploadResponseDto } from '../dto/response/file-upload-response.dto';
+import { CurrentUser } from '../../../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 
-@ApiTags('evaluations')
-@Controller('evaluations')
 @UseGuards(JwtAuthGuard)
+@Controller()
 @ApiBearerAuth()
+@ApiTags('evaluations')
 export class EvaluationsController {
   constructor(private readonly evaluationsService: EvaluationsService) {}
 
