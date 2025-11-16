@@ -16,6 +16,7 @@ import { RagieUploadResponse } from '../dto/response/ragie/ragie-upload-response
 import { Rubric, RubricSchema } from '../schemas/rubric.schema';
 import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
+import { fetchWithRetry } from 'src/common/utils/fetch.util';
 
 @Injectable()
 export class SystemDocumentsService {
@@ -57,7 +58,7 @@ export class SystemDocumentsService {
     query: string,
   ): Promise<string> {
     try {
-      const response = await fetch(`${this.ragieApiUrl}/retrievals`, {
+      const response = await fetchWithRetry(`${this.ragieApiUrl}/retrievals`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.ragieApiKey}`,
@@ -84,9 +85,11 @@ export class SystemDocumentsService {
       const result = (await response.json()) as RagieRetrievalResponse;
 
       if (!result.scored_chunks || result.scored_chunks.length === 0) {
-        this.logger.warn(`No documents found for type: ${docType}`);
+        this.logger.warn(
+          `No documents found for type: ${docType} with query: ${query}`,
+        );
         throw new BadRequestException(
-          `No ${docType} document found. Please upload one first.`,
+          `No ${docType} document found for query "${query}". Please upload one first.`,
         );
       }
 
@@ -220,7 +223,12 @@ Return a structured CV evaluation rubric with all criteria properly weighted.`,
     );
 
     if (Math.abs(totalWeight - 100) > 0.1) {
-      this.logger.warn(`Rubric weights sum to ${totalWeight}% instead of 100%`);
+      this.logger.error(
+        `CV Rubric weights sum to ${totalWeight}% instead of 100%. This is a fatal error.`,
+      );
+      throw new InternalServerErrorException(
+        `CV Rubric is misconfigured. Weights sum to ${totalWeight}%, not 100%.`,
+      );
     }
 
     return rubric;

@@ -1,12 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
-
   @Get()
-  getHello(): { message: string; documentation: string; version: string } {
-    return this.appService.getHello();
+  getHello() {
+    return {
+      message: 'Welcome to the CV Evaluation API',
+      documentation: 'https://api.example.com/docs',
+      version: '1.0.0',
+    };
   }
 }

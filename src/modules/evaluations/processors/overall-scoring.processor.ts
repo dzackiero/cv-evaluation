@@ -31,11 +31,12 @@ export class OverallScoringProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job<OverallScoringJobData>, error: Error) {
+  async onFailed(job: Job<OverallScoringJobData>, error: Error) {
     this.logger.error(
       `Job ${job.id} failed after ${job.attemptsMade} attempts:`,
       error,
     );
+    await this.evaluationsService.updateFailedJob(job.data.jobId);
   }
 
   @OnWorkerEvent('completed')

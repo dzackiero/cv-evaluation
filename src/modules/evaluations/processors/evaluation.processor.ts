@@ -2,6 +2,7 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { EvaluationsService } from '../services/evaluations.service';
+import { FileType } from 'generated/prisma/wasm';
 
 export interface CvEvaluationJobData {
   jobId: string;
@@ -33,7 +34,7 @@ export class CvEvaluationProcessor extends WorkerHost {
 
     try {
       await this.evaluationsService.evaluate(
-        'cv',
+        FileType.CV,
         userId,
         cvFileId,
         jobTitle,
@@ -76,7 +77,7 @@ export class ProjectEvaluationProcessor extends WorkerHost {
 
     try {
       await this.evaluationsService.evaluate(
-        'project',
+        FileType.PROJECT_REPORT,
         userId,
         projectFileId,
         jobTitle,
@@ -90,11 +91,12 @@ export class ProjectEvaluationProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job<ProjectEvaluationJobData>, error: Error) {
+  async onFailed(job: Job<ProjectEvaluationJobData>, error: Error) {
     this.logger.error(
       `Job ${job.id} failed after ${job.attemptsMade} attempts:`,
       error,
     );
+    await this.evaluationsService.updateFailedJob(job.data.jobId);
   }
 
   @OnWorkerEvent('completed')

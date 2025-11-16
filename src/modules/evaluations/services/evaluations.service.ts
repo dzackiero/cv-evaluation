@@ -1,8 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EvaluationDocumentsService } from './evaluation-documents.service';
 import { SystemDocumentsService } from './system-documents.service';
-import { generateText, generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
+import {
+  generateObjectWithRetry,
+  generateTextWithRetry,
+} from 'src/common/utils/llm.util';
 import {
   EvalResult,
   generateEvaluationSchema,
@@ -12,13 +15,22 @@ import { generateProjectEvaluationPrompt } from '../prompts/project-evaluation.p
 import { generateOverallSummaryPrompt } from '../prompts/overall-evaluation.prompt';
 import { EvaluateCandidateDto } from '../dto/request/evaluate-candidate.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { JobStatus } from 'generated/prisma';
+import { FileType, JobStatus } from 'generated/prisma';
 import { FlowProducer } from 'bullmq';
 import { InjectFlowProducer } from '@nestjs/bullmq';
 
 @Injectable()
 export class EvaluationsService {
   private logger = new Logger(EvaluationsService.name);
+  private readonly SUMMARY_TEMPERATURE = 0.2;
+  private readonly EVAL_TEMPERATURE = 0.1;
+  private readonly JOB_OPTIONS = {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+  };
 
   constructor(
     @InjectFlowProducer('evaluation-flow')
@@ -57,6 +69,7 @@ export class EvaluationsService {
         {
           name: 'cv-evaluation',
           queueName: 'cv-evaluation',
+          opts: this.JOB_OPTIONS,
           data: {
             userId,
             jobId: job.id,
@@ -67,6 +80,7 @@ export class EvaluationsService {
         {
           name: 'project-evaluation',
           queueName: 'project-evaluation',
+          opts: this.JOB_OPTIONS,
           data: {
             jobId: job.id,
             userId,
@@ -109,23 +123,44 @@ export class EvaluationsService {
     };
   }
 
+  async updateFailedJob(jobId: string) {
+    this.logger.log(`Updating job ${jobId} status to ${JobStatus.FAILED}`);
+    await this.prismaService.job.update({
+      where: { id: jobId },
+      data: { status: JobStatus.FAILED },
+    });
+
+    await this.prismaService.evaluationResult.update({
+      where: { jobId },
+      data: {
+        error: 'Evaluation process failed',
+        currentStage: 'failed',
+      },
+    });
+  }
+
   async evaluate(
-    type: 'cv' | 'project',
+    type: FileType,
     userId: string,
     fileId: string,
     jobTitle: string,
     jobId?: string,
   ) {
-    if (type === 'cv') {
-      return this.evaluateCv(userId, fileId, jobTitle, jobId);
+    const content = await this.documentService.loadFileContent(
+      fileId,
+      userId,
+      type,
+    );
+
+    if (type === FileType.CV) {
+      return this.evaluateCv(content, jobTitle, jobId);
     } else {
-      return this.evaluateProject(userId, fileId, jobTitle, jobId);
+      return this.evaluateProject(content, jobTitle, jobId);
     }
   }
 
   async evaluateCv(
-    userId: string,
-    cvFileId: string,
+    cvContent: string,
     jobTitle: string,
     jobId?: string,
   ): Promise<EvalResult> {
@@ -137,11 +172,6 @@ export class EvaluationsService {
         data: { currentStage: 'cv_processing' },
       });
     }
-
-    const cvContent = await this.documentService.loadFileContent(
-      cvFileId,
-      userId,
-    );
 
     const rubric = await this.systemDocumentsService.getCvRubric();
     this.logger.debug(`Rubric loaded with ${rubric.criteria.length} criteria`);
@@ -160,15 +190,13 @@ export class EvaluationsService {
       cvContent,
     });
 
-    this.logger.debug('Calling LLM for evaluation');
-    const result = await generateObject({
+    this.logger.debug('Calling LLM for evaluation with retry logic');
+    const evaluationResult = (await generateObjectWithRetry({
       model: openai('gpt-4o-mini'),
-      temperature: 0.1,
+      temperature: this.EVAL_TEMPERATURE,
       schema,
       prompt,
-    });
-
-    const evaluationResult = result.object as {
+    })) as {
       criteria: Record<string, { score: number; reasoning: string }>;
       feedback: string;
     };
@@ -223,8 +251,7 @@ export class EvaluationsService {
   }
 
   async evaluateProject(
-    userId: string,
-    projectFileId: string,
+    projectContent: string,
     jobTitle: string,
     jobId?: string,
   ): Promise<EvalResult> {
@@ -236,11 +263,6 @@ export class EvaluationsService {
         data: { currentStage: 'project_processing' },
       });
     }
-
-    const projectContent = await this.documentService.loadFileContent(
-      projectFileId,
-      userId,
-    );
 
     const rubric = await this.systemDocumentsService.getProjectRubric();
     this.logger.debug(
@@ -260,26 +282,22 @@ export class EvaluationsService {
       projectContent,
     );
 
-    this.logger.debug('Calling LLM for evaluation');
-    const result = await generateObject({
+    this.logger.debug('Calling LLM for evaluation with retry logic');
+    const evaluationResult = (await generateObjectWithRetry({
       model: openai('gpt-4o-mini'),
-      temperature: 0.1,
+      temperature: this.EVAL_TEMPERATURE,
       schema,
       prompt,
-    });
-
-    const evaluationResult = result.object as {
+    })) as {
       criteria: Record<string, { score: number; reasoning: string }>;
       feedback: string;
     };
 
     this.logger.debug('LLM evaluation complete, processing results');
 
-    // Calculate weighted score
     let weightedSum = 0;
     let totalWeight = 0;
     const enrichedCriteria: EvalResult['criteria'] = {};
-
     rubric.criteria.forEach((criterion) => {
       const criterionResult = evaluationResult.criteria[criterion.name];
       if (criterionResult) {
@@ -341,7 +359,7 @@ export class EvaluationsService {
       throw new Error('CV or Project evaluation not completed');
     }
 
-    this.logger.debug('Generating overall candidate summary');
+    this.logger.debug('Generating overall candidate summary with retry logic');
     const prompt = generateOverallSummaryPrompt(
       result.cvMatchRate,
       result.cvFeedback || 'no feedback provided',
@@ -349,13 +367,11 @@ export class EvaluationsService {
       result.projectFeedback || 'no feedback provided',
     );
 
-    const summaryResult = await generateText({
+    const overall_summary = await generateTextWithRetry({
       model: openai('gpt-4o-mini'),
-      temperature: 0.2,
+      temperature: this.SUMMARY_TEMPERATURE,
       prompt,
     });
-
-    const overall_summary = summaryResult.text;
 
     await this.prismaService.$transaction([
       this.prismaService.evaluationResult.update({

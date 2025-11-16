@@ -7,13 +7,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
-import { $Enums } from '../../../../generated/prisma';
+import { $Enums, FileType } from '../../../../generated/prisma';
 import { FileUploadItemDto } from '../dto/response/file-upload-response.dto';
 import { PDFParse } from 'pdf-parse';
 
 @Injectable()
 export class EvaluationDocumentsService {
   private readonly logger = new Logger(EvaluationDocumentsService.name);
+  private readonly MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
   constructor(
     private readonly storageService: StorageService,
@@ -30,6 +31,12 @@ export class EvaluationDocumentsService {
     }
     if (reportFile.mimetype !== 'application/pdf') {
       throw new BadRequestException('Project report file must be a PDF');
+    }
+
+    if (reportFile.size > this.MAX_SIZE_BYTES) {
+      throw new BadRequestException(
+        `Project report file must be smaller than ${this.MAX_SIZE_BYTES}`,
+      );
     }
 
     const cvPath = `files/${userId}/cv/${Date.now()}-${cvFile.originalname}`;
@@ -99,11 +106,16 @@ export class EvaluationDocumentsService {
     }
   }
 
-  async loadFileContent(fileId: string, userId: string): Promise<string> {
+  async loadFileContent(
+    fileId: string,
+    userId: string,
+    type?: FileType,
+  ): Promise<string> {
     const file = await this.prisma.file.findFirst({
       where: {
         id: fileId,
         userId,
+        type: type ?? undefined,
       },
     });
 
