@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { EvaluationJobResponseDto } from '../dto/response/evaluation-job-response.dto';
 import { EvaluateCandidateDto } from '../dto/request/evaluate-candidate.dto';
 import { EvaluationDocumentsService } from '../services/evaluation-documents.service';
+import { UserFilesResponseDto } from '../dto/response/user-files-response.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -99,6 +100,23 @@ export class EvaluationsController {
       cv: result.cv,
       report: result.report,
     };
+  }
+
+  @Get('files')
+  @ApiOperation({
+    summary: 'Get User Uploaded Files',
+    description:
+      'Retrieve a list of all files uploaded by the authenticated user.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User files retrieved successfully',
+    type: UserFilesResponseDto,
+  })
+  async getUserFiles(
+    @CurrentUser('id') userId: string,
+  ): Promise<UserFilesResponseDto> {
+    return await this.evaluationDocumentService.getUserFiles(userId);
   }
 
   @Post('evaluate')

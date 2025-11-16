@@ -9,6 +9,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { $Enums, FileType } from '../../../../generated/prisma';
 import { FileUploadItemDto } from '../dto/response/file-upload-response.dto';
+import { UserFilesResponseDto } from '../dto/response/user-files-response.dto';
 import { PDFParse } from 'pdf-parse';
 
 @Injectable()
@@ -104,6 +105,25 @@ export class EvaluationDocumentsService {
       ]);
       throw error;
     }
+  }
+
+  async getUserFiles(userId: string): Promise<UserFilesResponseDto> {
+    const files = await this.prisma.file.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        filename: true,
+        type: true,
+        path: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      total: files.length,
+      files,
+    };
   }
 
   async loadFileContent(

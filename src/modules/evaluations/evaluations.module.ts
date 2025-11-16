@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { EvaluationsService } from './services/evaluations.service';
 import { EvaluationDocumentsService } from './services/evaluation-documents.service';
 import { SystemDocumentsService } from './services/system-documents.service';
@@ -19,17 +19,6 @@ import { OverallScoringProcessor } from './processors/overall-scoring.processor'
     StorageModule,
     PrismaModule,
     ConfigModule,
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get('REDIS_PORT', 6379),
-          password: configService.get('REDIS_PASSWORD'),
-        },
-      }),
-      inject: [ConfigService],
-    }),
     BullModule.registerQueue(
       { name: 'cv-evaluation' },
       { name: 'project-evaluation' },
