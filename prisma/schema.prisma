@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid()) @map("id")
+  name         String   @map("name")
+  email        String   @unique @map("email")
+  password     String   @map("password")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  files File[]
+  jobs  Job[]
+
+  @@map("users")
+}
+
+model File {
+  id        String   @id @default(uuid()) @map("id")
+  userId    String   @map("user_id")
+  filename  String   @map("filename")
+  path      String   @map("path")
+  type      FileType @map("type")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id])
+  cvJobs     Job[]    @relation("cvFileRelation")
+  reportJobs Job[]    @relation("reportFileRelation")
+
+  @@map("files")
+}
+
+enum FileType {
+  CV
+  PROJECT_REPORT
+}
+
+model Job {
+  id           String    @id @default(uuid()) @map("id")
+  userId       String    @map("user_id")
+  cvFileId     String    @map("cv_file_id")
+  reportFileId String    @map("report_file_id")
+  status       JobStatus @default(QUEUED) @map("status")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user       User @relation(fields: [userId], references: [id])
+  cvFile     File @relation("cvFileRelation", fields: [cvFileId], references: [id])
+  reportFile File @relation("reportFileRelation", fields: [reportFileId], references: [id])
+
+  result EvaluationResult?
+
+  @@map("jobs")
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  FAILED
+  COMPLETED
+}
+
+model EvaluationResult {
+  jobId           String @id @map("job_id")
+  cvMatchRate     Float? @map("cv_match_rate")
+  cvFeedback      String? @map("cv_feedback")
+  projectScore    Float? @map("project_score")
+  projectFeedback String? @map("project_feedback")
+  overallSummary  String? @map("overall_summary")
+  rawResponse     Json?  @map("raw_response")
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@map("evaluation_results")
+}
