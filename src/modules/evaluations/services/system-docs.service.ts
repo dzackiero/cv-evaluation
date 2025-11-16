@@ -13,6 +13,9 @@ import { UploadSystemDocDto } from '../dto/request/upload-system-doc.dto';
 import { UploadedDocumentDto } from '../dto/response/system-doc-upload-response.dto';
 import { RagieRetrievalResponse } from '../dto/response/ragie/ragie-retreival-response.dto';
 import { RagieUploadResponse } from '../dto/response/ragie/ragie-upload-response.dto';
+import { Rubric, RubricSchema } from '../schemas/rubric.schema';
+import { generateObject } from 'ai';
+import { openai } from '@ai-sdk/openai';
 
 @Injectable()
 export class SystemDocsService {
@@ -24,12 +27,6 @@ export class SystemDocsService {
     this.ragieApiKey = this.configService.getOrThrow<string>('RAGIE_API_KEY');
   }
 
-  /**
-   * Upload a single system document to Ragie
-   * @param file - The file to upload
-   * @param uploadDto - Upload DTO containing type and version
-   * @returns Promise of uploaded document info
-   */
   async uploadSystemDocument(
     file: Express.Multer.File,
     uploadDto: UploadSystemDocDto,
@@ -55,12 +52,6 @@ export class SystemDocsService {
     }
   }
 
-  /**
-   * Generic method to retrieve document content by type from Ragie
-   * @param docType - Type of document to retrieve
-   * @param query - Search query for retrieval
-   * @returns Promise of document content
-   */
   async retrieveDocument(
     docType: SystemDocType,
     query: string,
@@ -74,6 +65,7 @@ export class SystemDocsService {
         },
         body: JSON.stringify({
           query,
+          rerank: true,
           filter: {
             documentType: docType,
           },
@@ -98,7 +90,6 @@ export class SystemDocsService {
         );
       }
 
-      // Combine all chunks into a single content string
       const content = result.scored_chunks
         .sort((a, b) => b.score - a.score)
         .map((chunk) => chunk.text)
@@ -120,12 +111,6 @@ export class SystemDocsService {
     }
   }
 
-  /**
-   * Upload a single document to Ragie using REST API
-   * @param file - The file to upload
-   * @param metadata - Document metadata
-   * @returns Promise of uploaded document info
-   */
   private async uploadToRagie(
     file: Express.Multer.File,
     metadata: SystemDocMetadataDto,
@@ -183,5 +168,104 @@ export class SystemDocsService {
       );
       throw error;
     }
+  }
+
+  async getJobDescription(jobTitle: string): Promise<string> {
+    return this.retrieveDocument(
+      SystemDocType.JOB_DESCRIPTION,
+      `job description for ${jobTitle}`,
+    );
+  }
+
+  async getCaseStudy(jobTitle: string): Promise<string> {
+    return this.retrieveDocument(
+      SystemDocType.CASE_STUDY,
+      `case study for ${jobTitle}`,
+    );
+  }
+
+  async getCvRubric(): Promise<Rubric> {
+    this.logger.log('Loading CV rubric from Ragie');
+
+    const rawRubric = await this.retrieveDocument(
+      SystemDocType.RUBRIC,
+      'CV evaluation rubric criteria',
+    );
+
+    this.logger.debug(`Retrieved raw rubric (${rawRubric.length} chars)`);
+    const result = await generateObject({
+      model: openai('gpt-5-mini'),
+      schema: RubricSchema,
+      prompt: `Extract the CV evaluation rubric from the following content.
+
+RUBRIC CONTENT:
+${rawRubric}
+
+INSTRUCTIONS:
+- This is a rubric for evaluating candidate CVs
+- Extract each CV evaluation criterion with its name, weight, description, and scoring guide
+- Convert criterion names to snake_case format (e.g., "Technical Skills Match" -> "technical_skills_match")
+- Keep displayName as the original human-readable format
+- Extract the exact scoring descriptions from the rubric
+- Weights should be numbers (e.g., 40 for 40%) and must sum to 100%
+- Scoring guide must have clear descriptions for CV evaluation scores 1 to 5
+
+Return a structured CV evaluation rubric with all criteria properly weighted.`,
+    });
+
+    const rubric = result.object;
+    const totalWeight = rubric.criteria.reduce((sum, c) => sum + c.weight, 0);
+    this.logger.log(
+      `Loaded CV rubric with ${rubric.criteria.length} criteria (total weight: ${totalWeight}%)`,
+    );
+
+    if (Math.abs(totalWeight - 100) > 0.1) {
+      this.logger.warn(`Rubric weights sum to ${totalWeight}% instead of 100%`);
+    }
+
+    return rubric;
+  }
+
+  async getProjectRubric(): Promise<Rubric> {
+    this.logger.log('Loading project evaluation rubric from RAG');
+
+    const rawRubric = await this.retrieveDocument(
+      SystemDocType.RUBRIC,
+      'Project evaluation rubric criteria scoring',
+    );
+
+    this.logger.debug(`Retrieved raw rubric (${rawRubric.length} chars)`);
+
+    const result = await generateObject({
+      model: openai('gpt-5-mini'),
+      schema: RubricSchema,
+      prompt: `Extract the project evaluation rubric from the following content.
+
+RUBRIC CONTENT:
+${rawRubric}
+
+INSTRUCTIONS:
+- This is a rubric for evaluating student project reports
+- Extract each project evaluation criterion with its name, weight, description, and scoring guide
+- Convert criterion names to snake_case format (e.g., "Problem Analysis" -> "problem_analysis")
+- Keep displayName as the original human-readable format
+- Extract the exact scoring descriptions from the rubric
+- Weights should be numbers (e.g., 25 for 25%) and must sum to 100%
+- Scoring guide must have clear descriptions for project scores 1 to 5
+
+Return a structured project evaluation rubric with all criteria properly weighted.`,
+    });
+
+    const rubric = result.object;
+    const totalWeight = rubric.criteria.reduce((sum, c) => sum + c.weight, 0);
+    this.logger.log(
+      `Loaded project rubric with ${rubric.criteria.length} criteria (total weight: ${totalWeight}%)`,
+    );
+
+    if (Math.abs(totalWeight - 100) > 0.1) {
+      this.logger.warn(`Rubric weights sum to ${totalWeight}% instead of 100%`);
+    }
+
+    return rubric;
   }
 }

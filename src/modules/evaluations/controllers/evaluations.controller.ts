@@ -25,13 +25,18 @@ import {
   EvaluationStatus,
 } from '../dto/response/evaluation-job-response.dto';
 import { EvaluateCandidateDto } from '../dto/request/evaluate-candidate.dto';
+import { EvaluationDocumentService } from '../services/evaluation-document.service';
+import { SingleEvaluateDto } from '../dto/request/single-evaluate.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
 @ApiBearerAuth()
 @ApiTags('evaluations')
 export class EvaluationsController {
-  constructor(private readonly evaluationsService: EvaluationsService) {}
+  constructor(
+    private readonly evaluationsService: EvaluationsService,
+    private readonly evaluationDocumentService: EvaluationDocumentService,
+  ) {}
 
   @Post('upload')
   @ApiOperation({
@@ -85,7 +90,7 @@ export class EvaluationsController {
     }
     const cvFile = files.cv[0];
     const reportFile = files.report[0];
-    const result = await this.evaluationsService.uploadFiles(
+    const result = await this.evaluationDocumentService.uploadFiles(
       userId,
       cvFile,
       reportFile,
@@ -144,5 +149,50 @@ export class EvaluationsController {
         overall_summary: 'Candidate shows strong skills in both areas.',
       },
     };
+  }
+}
+
+@UseGuards(JwtAuthGuard)
+@Controller()
+@ApiBearerAuth()
+@ApiTags('test')
+export class TestController {
+  constructor(private readonly evaluationsService: EvaluationsService) {}
+
+  @Post('cv')
+  evaluateCv(
+    @CurrentUser('id') userId: string,
+    @Body() request: SingleEvaluateDto,
+  ) {
+    return this.evaluationsService.evaluateCv(
+      userId,
+      request.fileId,
+      request.jobTitle,
+    );
+  }
+
+  @Post('project')
+  evaluateProject(
+    @CurrentUser('id') userId: string,
+    @Body() request: SingleEvaluateDto,
+  ) {
+    return this.evaluationsService.evaluateProject(
+      userId,
+      request.fileId,
+      request.jobTitle,
+    );
+  }
+
+  @Post('overall')
+  evaluateOverall(
+    @CurrentUser('id') userId: string,
+    @Body() request: EvaluateCandidateDto,
+  ) {
+    return this.evaluationsService.evaluateCandidate(
+      userId,
+      request.cvFileId,
+      request.projectFileId,
+      request.jobTitle,
+    );
   }
 }
