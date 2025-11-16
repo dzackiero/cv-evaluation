@@ -67,13 +67,18 @@ enum JobStatus {
 }
 
 model EvaluationResult {
-  jobId           String @id @map("job_id")
-  cvMatchRate     Float? @map("cv_match_rate")
-  cvFeedback      String? @map("cv_feedback")
-  projectScore    Float? @map("project_score")
-  projectFeedback String? @map("project_feedback")
-  overallSummary  String? @map("overall_summary")
-  rawResponse     Json?  @map("raw_response")
+  jobId           String   @id @map("job_id")
+  cvMatchRate     Float?   @map("cv_match_rate")
+  cvFeedback      String?  @map("cv_feedback")
+  cvCriteria      Json?    @map("cv_criteria")
+  projectScore    Float?   @map("project_score")
+  projectFeedback String?  @map("project_feedback")
+  projectCriteria Json?    @map("project_criteria")
+  overallSummary  String?  @map("overall_summary")
+  error           String?  @map("error")
+  currentStage    String?  @map("current_stage")
+  retryCount      Int      @default(0) @map("retry_count")
+  completedAt     DateTime? @map("completed_at")
 
   job Job @relation(fields: [jobId], references: [id])
 

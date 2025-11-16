@@ -5,6 +5,7 @@ import {
   UploadedFiles,
   BadRequestException,
   UseGuards,
+  Body,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import {
@@ -19,6 +20,11 @@ import { EvaluationsService } from '../services/evaluations.service';
 import { UploadResponseDto } from '../dto/response/file-upload-response.dto';
 import { CurrentUser } from '../../../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import {
+  EvaluationJobResponseDto,
+  EvaluationStatus,
+} from '../dto/response/evaluation-job-response.dto';
+import { EvaluateCandidateDto } from '../dto/request/evaluate-candidate.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -57,10 +63,6 @@ export class EvaluationsController {
     description: 'Files uploaded successfully',
     type: UploadResponseDto,
   })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad request - missing files or invalid file types',
-  })
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'cv', maxCount: 1 },
@@ -93,6 +95,44 @@ export class EvaluationsController {
       message: 'Files uploaded successfully',
       cv: result.cv,
       report: result.report,
+    };
+  }
+
+  @Post('evaluate')
+  @ApiResponse({
+    status: 200,
+    description: 'Evaluation job queued successfully',
+    type: EvaluationJobResponseDto,
+  })
+  evaluateCandidate(
+    @CurrentUser('id') userId: string,
+    @Body() request: EvaluateCandidateDto,
+  ): EvaluationJobResponseDto {
+    return {
+      id: userId,
+      status: EvaluationStatus.QUEUED,
+    };
+  }
+
+  @Post('result/:id')
+  @ApiResponse({
+    status: 200,
+    description: 'Evaluation job result retrieved successfully',
+    type: EvaluationJobResponseDto,
+  })
+  getEvaluationResult(
+    @CurrentUser('id') userId: string,
+  ): EvaluationJobResponseDto {
+    return {
+      id: userId,
+      status: EvaluationStatus.COMPLETED,
+      result: {
+        cv_match_rate: 0.85,
+        cv_feedback: 'Strong skills demonstrated in backend development.',
+        project_score: 0.9,
+        project_feedback: 'Excellent project report with clear documentation.',
+        overall_summary: 'Candidate shows strong skills in both areas.',
+      },
     };
   }
 }

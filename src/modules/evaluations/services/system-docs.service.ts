@@ -11,11 +11,8 @@ import {
 } from '../dto/request/system-doc-metadata.dto';
 import { UploadSystemDocDto } from '../dto/request/upload-system-doc.dto';
 import { UploadedDocumentDto } from '../dto/response/system-doc-upload-response.dto';
-
-interface RagieUploadResponse {
-  id: string;
-  status: string;
-}
+import { RagieRetrievalResponse } from '../dto/response/ragie/ragie-retreival-response.dto';
+import { RagieUploadResponse } from '../dto/response/ragie/ragie-upload-response.dto';
 
 @Injectable()
 export class SystemDocsService {
@@ -54,6 +51,71 @@ export class SystemDocsService {
       this.logger.error('Failed to upload document to Ragie', error);
       throw new InternalServerErrorException(
         'Failed to upload document to Ragie',
+      );
+    }
+  }
+
+  /**
+   * Generic method to retrieve document content by type from Ragie
+   * @param docType - Type of document to retrieve
+   * @param query - Search query for retrieval
+   * @returns Promise of document content
+   */
+  async retrieveDocument(
+    docType: SystemDocType,
+    query: string,
+  ): Promise<string> {
+    try {
+      const response = await fetch(`${this.ragieApiUrl}/retrievals`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.ragieApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          filter: {
+            documentType: docType,
+          },
+          top_k: 5,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(
+          `Ragie retrieval error for ${docType}: ${response.status} - ${errorText}`,
+        );
+        throw new Error(`Ragie retrieval error: ${response.status}`);
+      }
+
+      const result = (await response.json()) as RagieRetrievalResponse;
+
+      if (!result.scored_chunks || result.scored_chunks.length === 0) {
+        this.logger.warn(`No documents found for type: ${docType}`);
+        throw new BadRequestException(
+          `No ${docType} document found. Please upload one first.`,
+        );
+      }
+
+      // Combine all chunks into a single content string
+      const content = result.scored_chunks
+        .sort((a, b) => b.score - a.score)
+        .map((chunk) => chunk.text)
+        .join('\n\n');
+
+      this.logger.log(
+        `Retrieved ${result.scored_chunks.length} chunks for ${docType}`,
+      );
+
+      return content;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error(`Failed to retrieve ${docType} from Ragie`, error);
+      throw new InternalServerErrorException(
+        `Failed to retrieve ${docType} from Ragie`,
       );
     }
   }

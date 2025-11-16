@@ -45,10 +45,15 @@ CREATE TABLE "evaluation_results" (
     "job_id" TEXT NOT NULL,
     "cv_match_rate" DOUBLE PRECISION,
     "cv_feedback" TEXT,
+    "cv_criteria" JSONB,
     "project_score" DOUBLE PRECISION,
     "project_feedback" TEXT,
+    "project_criteria" JSONB,
     "overall_summary" TEXT,
-    "raw_response" JSONB,
+    "error" TEXT,
+    "current_stage" TEXT,
+    "retry_count" INTEGER NOT NULL DEFAULT 0,
+    "completed_at" TIMESTAMP(3),
 
     CONSTRAINT "evaluation_results_pkey" PRIMARY KEY ("job_id")
 );

@@ -68,15 +68,6 @@ export class SystemDocsController {
     description: 'System document uploaded successfully',
     type: SystemDocUploadResponseDto,
   })
-  @ApiResponse({
-    status: 400,
-    description:
-      'Bad request - missing file, invalid type, or file validation failed',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Unauthorized - invalid or missing API key',
-  })
   @UseInterceptors(FileInterceptor('file'))
   async uploadSystemDocument(
     @UploadedFile() file: Express.Multer.File,
