@@ -4,8 +4,7 @@ import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 export enum SystemDocType {
   JOB_DESCRIPTION = 'job_description',
   CASE_STUDY = 'case_study',
-  CV_RUBRIC = 'cv_rubric',
-  PROJECT_RUBRIC = 'project_rubric',
+  RUBRIC = 'rubric',
 }
 
 export class SystemDocMetadataDto {

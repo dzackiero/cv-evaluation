@@ -47,12 +47,7 @@ export class SystemDocsController {
         },
         type: {
           type: 'string',
-          enum: [
-            'job_description',
-            'case_study',
-            'cv_rubric',
-            'project_rubric',
-          ],
+          enum: ['job_description', 'case_study', 'rubric', ''],
           description: 'Type of the system document',
         },
         version: {

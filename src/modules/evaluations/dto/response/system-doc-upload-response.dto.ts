@@ -19,11 +19,10 @@ export class UploadedDocumentDto {
     example: {
       id: 'job-desc-1731744000000',
       type: 'job_description',
-      target: 'cv',
       version: '1.0',
     },
   })
-  metadata: SystemDocMetadataDto & { id: string; target: 'cv' | 'project' };
+  metadata: SystemDocMetadataDto & { id: string };
 }
 
 export class SystemDocUploadResponseDto {

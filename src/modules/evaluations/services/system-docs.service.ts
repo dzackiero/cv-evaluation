@@ -121,22 +121,6 @@ export class SystemDocsService {
   }
 
   /**
-   * Get the evaluation target based on document type
-   * @param type - Document type
-   * @returns Target evaluation context ('cv' or 'project')
-   */
-  private getTargetFromType(type: SystemDocType): 'cv' | 'project' {
-    switch (type) {
-      case SystemDocType.JOB_DESCRIPTION:
-      case SystemDocType.CV_RUBRIC:
-        return 'cv';
-      case SystemDocType.CASE_STUDY:
-      case SystemDocType.PROJECT_RUBRIC:
-        return 'project';
-    }
-  }
-
-  /**
    * Upload a single document to Ragie using REST API
    * @param file - The file to upload
    * @param metadata - Document metadata
@@ -153,11 +137,9 @@ export class SystemDocsService {
       formData.append('file', blob, file.originalname);
 
       const documentId = crypto.randomUUID();
-      const target = this.getTargetFromType(metadata.type);
       const ragieMetadata = {
         documentId,
         documentType: metadata.type,
-        evaluationTarget: target,
         ...(metadata.version && { version: metadata.version }),
         uploadedAt: new Date().toISOString(),
       };
@@ -191,7 +173,6 @@ export class SystemDocsService {
         metadata: {
           id: documentId,
           type: metadata.type,
-          target,
           version: metadata.version || 'v1.0',
         },
       };

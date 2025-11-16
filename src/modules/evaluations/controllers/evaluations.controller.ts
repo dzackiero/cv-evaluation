@@ -99,6 +99,11 @@ export class EvaluationsController {
   }
 
   @Post('evaluate')
+  @ApiOperation({
+    summary: 'Evaluate Candidate',
+    description:
+      'Initiate evaluation of the candidate based on the uploaded CV and project report.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Evaluation job queued successfully',
@@ -115,6 +120,11 @@ export class EvaluationsController {
   }
 
   @Post('result/:id')
+  @ApiOperation({
+    summary: 'Get Evaluation Result',
+    description:
+      'Retrieve the evaluation result for a given job ID after processing is complete.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Evaluation job result retrieved successfully',
