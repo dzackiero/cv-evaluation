@@ -23,8 +23,8 @@ import { ApiKeyGuard } from '../../../auth/guards/api-key.guard';
 
 @ApiTags('system-docs')
 @Controller('system-docs')
-@UseGuards(ApiKeyGuard)
 @ApiSecurity('api-key')
+@UseGuards(ApiKeyGuard)
 export class SystemDocsController {
   constructor(private readonly systemDocsService: SystemDocsService) {}
 
