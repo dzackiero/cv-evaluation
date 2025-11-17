@@ -6,7 +6,7 @@ export class AppController {
   getHello() {
     return {
       message: 'Welcome to the CV Evaluation API',
-      documentation: 'https://api.example.com/docs',
+      documentation: 'https://cv-evaluation.up.railway.app/docs',
       version: '1.0.0',
     };
   }
